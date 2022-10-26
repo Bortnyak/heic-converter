@@ -1,13 +1,6 @@
-// const { promisify } = require('util');
-// const fs = require('fs');
-// const convert = require('heic-convert');
-
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { extname } from "node:path";
-
 import { convert } from "heic-convert";
-
-
 
 const config = await readFile('./config.json');
 const configJSON = JSON.parse(config);
@@ -20,10 +13,8 @@ try {
 
   for (const f of files) {
     const ext = extname(f);
-    console.log("ext: ", ext);
 
     if (ext === ".heic") {
-      console.log("heic file name ====> ", f);
       const inputBuffer = await readFile(f);
       const outputBuffer = await convert({
         buffer: inputBuffer, // the HEIC file buffer
