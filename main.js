@@ -1,31 +1,35 @@
-import { readdir, readFile, writeFile } from 'node:fs/promises'
+import { readdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile } from 'node:fs';
 import { extname } from "node:path";
-import { convert } from "heic-convert";
+import converter from "heic-convert";
 
 const config = await readFile('./config.json');
-const configJSON = JSON.parse(config);
-const { srcDir, outDir, compQuality } = configJSON;
+const { srcDir, outDir, compQuality } = JSON.parse(config);
 
-console.info("configJSON: ", configJSON);
+let counter = 0;
 
 try {
   const files = await readdir(srcDir);
-
   for (const f of files) {
     const ext = extname(f);
 
-    if (ext === ".heic") {
-      const inputBuffer = await readFile(f);
-      const outputBuffer = await convert({
+    if (ext === ".HEIC") {
+      const inputBuffer = await readFile(`${srcDir}${f}`);
+      const outputBuffer = await converter({
         buffer: inputBuffer, // the HEIC file buffer
         format: 'JPEG',      // output format
-        quality: compQuality           // the jpeg compression quality, between 0 and 1
+        quality: compQuality // the jpeg compression quality, between 0 and 1
       });
       const fileName = f.substring(0, f.indexOf(".")) + ".jpg";
-      await writeFile(`${outDir}/${fileName}`, outputBuffer);
+      await writeFile(`${outDir}${fileName}/`, outputBuffer);
+    } else {
+      copyFile(`${srcDir}/${f}`, `${outDir}/${f}`, (err) => {
+        if (err) throw err;
+        console.log('exe was copied to destination');
+      });
     }
+    counter += 1;
   }
-
 } catch (e) {
   console.log(e);
 }
