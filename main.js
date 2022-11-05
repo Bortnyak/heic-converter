@@ -1,29 +1,19 @@
-import { readdir, readFile, writeFile } from 'node:fs/promises';
-
-import { extname } from "node:path";
+import { readdir, readFile } from 'node:fs/promises';
 import { cpus } from "node:os";
 import { fork } from "node:child_process";
 
 const config = await readFile('./config.json');
-
-
 const pid = process.pid;
 const { srcDir, outDir, compQuality } = JSON.parse(config);
 
+let liveProcCounter = 0;
+
 const prepareChunks = async () => {
   const cpuCount = cpus().length;
-  console.log("cpuCount: ", cpuCount);
-
-  const config = await readFile('./config.json');
-
-
   const chunksArr = [];
-
   const files = await readdir(srcDir);
   const filesCount = files.length;
   const chunkSize = Math.round(filesCount / cpuCount);
-
-  console.log("chunkSize: ", chunkSize);
 
   for (let i = 0; i < filesCount; i += chunkSize) {
     const chunk = files.slice(i, i + chunkSize);
@@ -34,24 +24,40 @@ const prepareChunks = async () => {
 }
 
 
+const checkReadinessAndShutdown = () => {
+  if (liveProcCounter === 0) {
+    console.log("There are no more jobs in progress. So, I'm done");
+    process.exit(0);
+  }
+}
+
+
 const distributeByCores = (chunksArr) => {
-  let processCounter = 1;
   for (const chunk of chunksArr) {
     const forkedProc = fork("imageProcessor.js", { stdio: 'pipe' });
+
     forkedProc.stdout.pipe(process.stdout);
     forkedProc.stderr.pipe(process.stderr);
 
-    const m = `Process ${processCounter} has been forked`;
-    forkedProc.send({ pid, chunk, srcDir, outDir, m });
+    liveProcCounter += 1;
 
-    processCounter += 1;
+    forkedProc.send({
+      pid, chunk, srcDir, outDir, number: liveProcCounter, m: `Process ${liveProcCounter} has been forked`,
+    });
+
 
     forkedProc.on("error", (e) => {
-      console.log("Erro event emmited: ", e)
+      console.log("Erro event fired: ", e)
     })
 
     forkedProc.on('message', (msg) => {
-      console.log("msg from child....", msg);
+      console.log("msg from child ==> ", msg);
+      if (msg.ready) {
+        forkedProc.kill();
+        liveProcCounter -= 1;
+      }
+
+      checkReadinessAndShutdown();
     });
   }
 }
@@ -59,14 +65,7 @@ const distributeByCores = (chunksArr) => {
 
 const init = async () => {
   const chunks = await prepareChunks();
-
   distributeByCores(chunks);
-
-
-  process.on("SIGTERM", () => {
-    console.log("Crap...!");
-    process.exit(1);
-  });
 }
 
 

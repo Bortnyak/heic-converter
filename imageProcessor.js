@@ -1,7 +1,7 @@
 import { extname } from "node:path";
 import { copyFile } from 'node:fs';
 // import { Piscina } from 'piscina';
-import { readdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import convert from "heic-convert";
 
 
@@ -15,18 +15,21 @@ const imageExtensions = [".HEIC", ".heic"];
 
 async function listenToEvents() {
   let parentPid;
+  let procNum;
 
   process.on("message", async (msg) => {
-    const { pid, chunk, srcDir, outDir, m } = msg;
+    const { pid, chunk, srcDir, outDir, number, m } = msg;
     parentPid = pid;
+    procNum = number;
 
-    console.log("Child proccess says:: ", m)
-    const jobs = [];
+    console.log("Message from child process ==> ", m);
+
+    //const jobs = [];
 
     let filesCount = 0;
+
     for (const image of chunk) {
       const ext = extname(image);
-      console.log("ext: ", ext);
 
       if (imageExtensions.indexOf(ext) < 0) {
         const inputp = `${srcDir}/${image}`;
@@ -41,6 +44,7 @@ async function listenToEvents() {
       }
 
       // jobs.push(piscina.run({ srcDir, image, outDir }));
+
       let inputBuffer;
       try {
         inputBuffer = await readFile(`${srcDir}${image}`);
@@ -67,29 +71,23 @@ async function listenToEvents() {
       }
 
       filesCount += 1;
-      process.send({ fileProcessed: fileName, totalCountByProc: filesCount });
+      process.send({ fileProcessed: fileName, number: procNum, totalCountByProc: filesCount });
     }
 
-    // console.log("jobs size: ", jobs.length);
-    // console.log("Before start of workes......");
+    process.send({ ready: true });
     // const res = await Promise.allSettled(jobs);
-    // console.log("res: ", res);
   });
 
 
-  process.send({ msg: "Child proccess received args" });
 
 
-  // process.on("SIGTERM", () => {
-  //   console.log("Parent process terminating me....");
-  //   console.log("So, I'll do the same...!");
-  //   process.kill(parentPid);
-  //   process.exit(1);
-  // });
+
+  process.on("SIGTERM", () => {
+    console.log("Parent process terminating me :( ");
+    console.log("Goodbye!");
+    process.exit(1);
+  });
 }
 
-try {
-  await listenToEvents();
-} catch (e) {
-  console.log("Error ");
-}
+
+await listenToEvents();
