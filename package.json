@@ -20,6 +20,7 @@
   "homepage": "https://github.com/Bortnyak/heic-converter#readme",
   "dependencies": {
     "heic-convert": "^1.2.4",
+    "piscina": "^3.2.0",
     "pkg": "^5.8.0"
   }
 }

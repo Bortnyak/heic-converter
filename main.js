@@ -1,35 +1,73 @@
 import { readdir, readFile, writeFile } from 'node:fs/promises';
-import { copyFile } from 'node:fs';
+
 import { extname } from "node:path";
-import converter from "heic-convert";
+import { cpus } from "node:os";
+import { fork } from "node:child_process";
 
 const config = await readFile('./config.json');
+
+
+const pid = process.pid;
 const { srcDir, outDir, compQuality } = JSON.parse(config);
 
-let counter = 0;
+const prepareChunks = async () => {
+  const cpuCount = cpus().length;
+  console.log("cpuCount: ", cpuCount);
 
-try {
+  const config = await readFile('./config.json');
+
+
+  const chunksArr = [];
+
   const files = await readdir(srcDir);
-  for (const f of files) {
-    const ext = extname(f);
+  const filesCount = files.length;
+  const chunkSize = Math.round(filesCount / cpuCount);
 
-    if (ext === ".HEIC") {
-      const inputBuffer = await readFile(`${srcDir}${f}`);
-      const outputBuffer = await converter({
-        buffer: inputBuffer, // the HEIC file buffer
-        format: 'JPEG',      // output format
-        quality: compQuality // the jpeg compression quality, between 0 and 1
-      });
-      const fileName = f.substring(0, f.indexOf(".")) + ".jpg";
-      await writeFile(`${outDir}${fileName}/`, outputBuffer);
-    } else {
-      copyFile(`${srcDir}/${f}`, `${outDir}/${f}`, (err) => {
-        if (err) throw err;
-        console.log('exe was copied to destination');
-      });
-    }
-    counter += 1;
+  console.log("chunkSize: ", chunkSize);
+
+  for (let i = 0; i < filesCount; i += chunkSize) {
+    const chunk = files.slice(i, i + chunkSize);
+    chunksArr.push(chunk);
   }
-} catch (e) {
-  console.log(e);
+
+  return chunksArr;
 }
+
+
+const distributeByCores = (chunksArr) => {
+  let processCounter = 1;
+  for (const chunk of chunksArr) {
+    const forkedProc = fork("imageProcessor.js", { stdio: 'pipe' });
+    forkedProc.stdout.pipe(process.stdout);
+    forkedProc.stderr.pipe(process.stderr);
+
+    const m = `Process ${processCounter} has been forked`;
+    forkedProc.send({ pid, chunk, srcDir, outDir, m });
+
+    processCounter += 1;
+
+    forkedProc.on("error", (e) => {
+      console.log("Erro event emmited: ", e)
+    })
+
+    forkedProc.on('message', (msg) => {
+      console.log("msg from child....", msg);
+    });
+  }
+}
+
+
+const init = async () => {
+  const chunks = await prepareChunks();
+
+  distributeByCores(chunks);
+
+
+  process.on("SIGTERM", () => {
+    console.log("Crap...!");
+    process.exit(1);
+  });
+}
+
+
+await init();
